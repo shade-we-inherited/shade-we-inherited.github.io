@@ -60,6 +60,11 @@ legend { font-size: 13px; font-weight: 500; padding: 0; margin-bottom: 4px; }
 .pin.mine { background: #c2622d; }
 .pin.gone { background: #fff; border: 3px solid var(--leaf); }
 .imgdate { font: 500 12px var(--body); color: var(--ink); background: rgba(246,243,236,.92); border: 1px solid var(--rule); border-radius: 999px; padding: 4px 10px; justify-self: end; box-shadow: 0 2px 8px rgba(36,34,31,.12); }
+.linkrow { display: flex; gap: 6px; }
+.linkrow input { font: 13px var(--body); flex: 1; min-width: 0; border: 1px solid var(--rule); border-radius: 6px; padding: 7px 9px; background: #fff; color: var(--ink); }
+.panel .linkrow button { padding: 7px 12px; font-size: 14px; }
+.panel .danger { border-color: #9a3b2a; color: #9a3b2a; background: transparent; }
+.editbtn { font: 600 13px var(--body); border: 1px solid var(--ink); background: transparent; color: var(--ink); border-radius: 6px; padding: 4px 10px; margin-top: 6px; justify-self: start; cursor: pointer; }
 .st { font-size: 12px; font-weight: 600; color: var(--leaf); }
 .marker-cluster { background: rgba(47,107,69,.28); border-radius: 50%; }
 .marker-cluster div { width: 30px; height: 30px; margin: 5px; border-radius: 50%; background: var(--leaf); color: #fff; font: 600 13px/30px var(--body); text-align: center; }
@@ -105,7 +110,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
   </div>
 
   <form id="f" hidden>
-    <p class="step"><b>2</b> Tell us about it</p>
+    <p class="step"><b>2</b> <span id="formStep">Tell us about it</span></p>
     <label>The tree, if you know it
       <input type="text" id="tree" maxlength="60" placeholder="The big trees by the school pitch">
     </label>
@@ -131,13 +136,19 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
     </div>
     <label class="check"><input type="checkbox" id="ok" required> I'm happy for this pin, its story and my first name to appear on the public map.</label>
     <div class="row">
-      <button type="button" class="ghost" id="cancel">Move pin</button>
+      <button type="button" class="ghost" id="cancel">Cancel</button>
       <button type="submit" class="primary" id="send" disabled>Add my tree</button>
     </div>
+    <p class="small" id="editHint" hidden>Drag the pin to move it. Changes appear on the map after a quick check, and until then the map keeps showing your earlier version.</p>
+    <button type="button" class="ghost danger" id="remove" hidden>Remove my tree</button>
   </form>
 
   <div id="done" hidden>
     <p class="thanks" id="thanksText">Thank you. Your tree will appear on the map once it has been checked.</p>
+    <div id="linkbox" hidden style="display:grid;gap:6px;margin-top:10px">
+      <p class="small"><b>Your private edit link.</b> Keep it to change or remove this tree later from any device. This browser will also remember it, so you can tap Edit on your tree's card next time.</p>
+      <div class="linkrow"><input type="text" id="editlink" readonly aria-label="Your private edit link"><button type="button" class="ghost" id="copy">Copy</button></div>
+    </div>
     <button type="button" class="ghost" id="again" style="margin-top:10px">Pin another tree</button>
   </div>
 
@@ -195,9 +206,21 @@ const cluster = L.markerClusterGroup({ showCoverageOnHover: false, maxClusterRad
 map.addLayer(cluster);
 const esc = s => String(s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const STATUS = { standing: 'Still standing', gone: 'Cut down or gone' };
+// private edit tokens kept in this browser; the server stores only their SHA-256 hash
+const store = {
+  get() { try { return JSON.parse(localStorage.getItem('swi_tokens') || '[]'); } catch (e) { return []; } },
+  add(t) { try { const a = store.get(); if (!a.includes(t)) { a.push(t); localStorage.setItem('swi_tokens', JSON.stringify(a)); } } catch (e) {} },
+  drop(t) { try { localStorage.setItem('swi_tokens', JSON.stringify(store.get().filter(x => x !== t))); } catch (e) {} }
+};
+async function sha(t) { const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(t)); return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join(''); }
+const newToken = () => (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now()).replace(/-/g, '') + Math.random().toString(36).slice(2, 10);
+const editURL = t => location.origin + location.pathname + '?edit=' + t;
+const mine = {};                                   // pid (hash prefix) -> token
+const markers = {};                                // pid -> marker
 function card(p, tag) {
   const who = [p.name, p.country].filter(Boolean).join(', ');
-  return `<div class="card">${tag ? `<span class="tag">${tag}</span>` : ''}<span class="t">${esc(p.tree || 'A tree')}</span><span class="s">${esc(p.story)}</span>${STATUS[p.status] ? `<span class="st">${STATUS[p.status]}</span>` : ''}${who ? `<span class="w">${esc(who)}</span>` : ''}</div>`;
+  const tok = p.pid && mine[p.pid];
+  return `<div class="card">${tag ? `<span class="tag">${tag}</span>` : ''}<span class="t">${esc(p.tree || 'A tree')}</span><span class="s">${esc(p.story)}</span>${STATUS[p.status] ? `<span class="st">${STATUS[p.status]}</span>` : ''}${who ? `<span class="w">${esc(who)}</span>` : ''}${tok ? `<button type="button" class="editbtn" data-token="${esc(tok)}">Edit</button>` : ''}</div>`;
 }
 // keep story cards clear of the text panel (left on wide screens, bottom sheet on phones)
 const popOpts = () => innerWidth > 640
@@ -207,44 +230,110 @@ let total = 0;
 function setCount() { document.getElementById('count').textContent = total === 0 ? 'Be one of the first to pin a tree' : total === 1 ? '1 tree on the map so far' : `${total} trees on the map so far`; }
 function addPin(p, cls, tag) {
   if (!isFinite(+p.lat) || !isFinite(+p.lon)) return;
-  L.marker([+p.lat, +p.lon], { icon: icon(cls || (p.status === 'gone' ? 'gone' : '')) }).bindPopup(card(p, tag), popOpts()).addTo(cluster);
+  if (p.pid && markers[p.pid]) { cluster.removeLayer(markers[p.pid]); total--; }
+  const m = L.marker([+p.lat, +p.lon], { icon: icon(cls || (p.status === 'gone' ? 'gone' : '')) }).bindPopup(card(p, tag), popOpts()).addTo(cluster);
+  if (p.pid) markers[p.pid] = m;
   total++; setCount();
 }
+function dropPin(pid) { if (markers[pid]) { cluster.removeLayer(markers[pid]); delete markers[pid]; total--; setCount(); } }
 setCount();
-if (API_URL) fetch(API_URL).then(r => r.json()).then(list => list.forEach(p => addPin(p))).catch(() => {});
+(async () => {
+  const toks = store.get();
+  for (const t of toks) mine[(await sha(t)).slice(0, 12)] = t;
+  let list = [];
+  try { list = await (await fetch(API_URL)).json(); } catch (e) {}
+  list.forEach(p => addPin(p));
+  for (const [pid, t] of Object.entries(mine)) {      // your own pins that are still waiting for a check
+    if (markers[pid]) continue;
+    try { const j = await (await fetch(API_URL + '?action=mine&token=' + encodeURIComponent(t))).json();
+      if (j.ok) addPin(j.pin, 'mine', 'Your tree, waiting for a check'); else if (j.removed) store.drop(t);
+    } catch (e) {}
+  }
+  const q = new URLSearchParams(location.search).get('edit');
+  if (q) { history.replaceState(null, '', location.pathname); store.add(q); mine[(await sha(q)).slice(0, 12)] = q; startEdit(q); }
+})();
 
-// placing a pin
+// placing a pin, and editing one
 const f = document.getElementById('f'), s1 = document.getElementById('s1'), done = document.getElementById('done');
-let draft = null;
+const why = document.getElementById('why'), ok = document.getElementById('ok'), send = document.getElementById('send');
+const rm = document.getElementById('remove'), hint = document.getElementById('editHint'), stepT = document.getElementById('formStep');
+let draft = null, editTok = null;
 function place(latlng) {
   const ll = latlng.wrap();
   if (draft) draft.setLatLng(ll);
   else { draft = L.marker(ll, { icon: icon('mine'), draggable: true, zIndexOffset: 1000 }).addTo(map); }
-  s1.hidden = true; f.hidden = false;
+  s1.hidden = true; f.hidden = false; check();
   if (map.getZoom() < 15) map.flyTo(ll, Math.max(map.getZoom(), 16), { duration: 0.8 });
 }
-map.on('click', e => { if (done.hidden) place(e.latlng); });
-document.getElementById('cancel').onclick = () => { if (draft) { map.removeLayer(draft); draft = null; } f.hidden = true; s1.hidden = false; };
-const why = document.getElementById('why'), ok = document.getElementById('ok'), send = document.getElementById('send');
+function resetForm() {
+  if (draft) { map.removeLayer(draft); draft = null; }
+  editTok = null; f.reset(); rm.hidden = true; hint.hidden = true; rm.textContent = 'Remove my tree'; rm.dataset.sure = '';
+  stepT.textContent = 'Tell us about it'; send.textContent = 'Add my tree'; f.hidden = true; s1.hidden = false;
+}
+async function startEdit(t) {
+  map.closePopup();
+  let j = null;
+  try { j = await (await fetch(API_URL + '?action=mine&token=' + encodeURIComponent(t))).json(); } catch (e) {}
+  if (!j || !j.ok) {
+    done.hidden = false; s1.hidden = true; f.hidden = true; document.getElementById('linkbox').hidden = true;
+    document.getElementById('thanksText').textContent = j && j.removed ? 'This tree has been removed from the map.' : 'We could not find a tree for this edit link. Check that the whole link was copied.';
+    return;
+  }
+  const p = j.pin; resetForm(); done.hidden = true; editTok = t;
+  document.getElementById('tree').value = p.tree || ''; why.value = p.story || '';
+  document.getElementById('name').value = p.name || ''; document.getElementById('country').value = p.country || '';
+  const r = document.querySelector(`input[name=status][value="${p.status}"]`); if (r) r.checked = true;
+  ok.checked = true; stepT.textContent = 'Edit your tree'; send.textContent = 'Save changes'; rm.hidden = false; hint.hidden = false;
+  place(L.latLng(+p.lat, +p.lon)); map.flyTo([+p.lat, +p.lon], 17, { duration: 0.8 });
+}
+map.on('click', e => { if (done.hidden && !editTok) place(e.latlng); });
+map.getContainer().addEventListener('click', e => { const b = e.target.closest('.editbtn'); if (b) { e.stopPropagation(); startEdit(b.dataset.token); } }, true);
+document.getElementById('cancel').onclick = resetForm;
 const check = () => { send.disabled = !(why.value.trim().length > 2 && ok.checked && draft); };
 why.oninput = check; ok.onchange = check;
+async function post(body) {
+  await fetch(API_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) });
+}
+function showDone(msg, link) {
+  document.getElementById('thanksText').textContent = msg;
+  const box = document.getElementById('linkbox'); box.hidden = !link;
+  if (link) document.getElementById('editlink').value = link;
+  f.hidden = true; s1.hidden = true; done.hidden = false;
+}
 f.onsubmit = async e => {
   e.preventDefault(); check(); if (send.disabled) return;
   const ll = draft.getLatLng();
   const p = { lat: +ll.lat.toFixed(5), lon: +ll.lng.toFixed(5), tree: document.getElementById('tree').value.trim(), story: why.value.trim(),
     status: (document.querySelector('input[name=status]:checked') || {}).value || 'unsure',
     name: document.getElementById('name').value.trim(), country: document.getElementById('country').value.trim(), website: document.getElementById('website').value };
-  send.disabled = true; send.textContent = 'Adding';
-  let msg = 'Thank you. Your tree will appear on the map once it has been checked, usually within a day.';
-  if (API_URL) {
-    try { await fetch(API_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(p) }); }
-    catch (err) { msg = 'Something went wrong sending your tree. Please check your connection and try again.'; }
-  } else { msg = 'Preview only: nothing was saved.'; }
-  document.getElementById('thanksText').textContent = msg;
-  map.removeLayer(draft); draft = null; addPin(p, 'mine', 'Your tree, waiting for a check');
-  f.reset(); send.textContent = 'Add my tree'; f.hidden = true; done.hidden = false;
+  const editing = editTok, t = editing || newToken();
+  send.disabled = true; send.textContent = editing ? 'Saving' : 'Adding';
+  try {
+    await post(Object.assign({ action: editing ? 'edit' : 'add', token: t }, p));
+    store.add(t); const pid = (await sha(t)).slice(0, 12); mine[pid] = t; p.pid = pid;
+    resetForm(); addPin(p, 'mine', editing ? 'Your edit, waiting for a check' : 'Your tree, waiting for a check');
+    showDone(editing ? 'Thank you. Your changes will appear once they have been checked. Until then the map shows your earlier version.'
+                     : 'Thank you. Your tree will appear on the map once it has been checked, usually within a day.', editURL(t));
+  } catch (err) {
+    send.disabled = false; send.textContent = editing ? 'Save changes' : 'Add my tree';
+    alertBox('Something went wrong sending your tree. Please check your connection and try again.');
+  }
 };
-document.getElementById('again').onclick = () => { done.hidden = true; s1.hidden = false; check(); };
+function alertBox(m) { hint.hidden = false; hint.textContent = m; }
+rm.onclick = async () => {
+  if (!editTok) return;
+  if (!rm.dataset.sure) { rm.dataset.sure = '1'; rm.textContent = 'Tap again to remove it for good'; return; }
+  const t = editTok; rm.disabled = true; rm.textContent = 'Removing';
+  try { await post({ action: 'remove', token: t }); } catch (err) {}
+  const pid = (await sha(t)).slice(0, 12); dropPin(pid); store.drop(t); delete mine[pid];
+  rm.disabled = false; resetForm(); showDone('Your tree has been removed from the map.', null);
+};
+document.getElementById('copy').onclick = async () => {
+  const inp = document.getElementById('editlink'), btn = document.getElementById('copy');
+  try { await navigator.clipboard.writeText(inp.value); btn.textContent = 'Copied'; } catch (e) { inp.select(); btn.textContent = 'Select and copy'; }
+  setTimeout(() => btn.textContent = 'Copy', 2500);
+};
+document.getElementById('again').onclick = () => { done.hidden = true; s1.hidden = false; document.getElementById('linkbox').hidden = true; check(); };
 
 // search (OpenStreetMap Nominatim, light use)
 const res = document.getElementById('results');
