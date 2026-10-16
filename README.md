@@ -2,7 +2,7 @@
 
 A shared map of the trees that shaped us. Somewhere there is a tree whose shade you sat in, whose fruit you picked or under which you watched the world go by. Someone planted it, or it came up on its own, and you got to enjoy it. Pin it on the map with a line or three about what it meant to you.
 
-**Add your tree:** https://uceseoo.github.io/shade-we-inherited/
+**Add your tree:** https://shade-we-inherited.github.io/
 
 Pins appear after a quick check, usually within a day. Please pin trees in public or shared places and keep homes off the map.
 
