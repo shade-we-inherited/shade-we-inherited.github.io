@@ -59,6 +59,7 @@ legend { font-size: 13px; font-weight: 500; padding: 0; margin-bottom: 4px; }
 .pin { width: 18px; height: 18px; border-radius: 50%; background: var(--leaf); border: 2.5px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.4); }
 .pin.mine { background: #c2622d; }
 .pin.gone { background: #fff; border: 3px solid var(--leaf); }
+.imgdate { font: 500 12px var(--body); color: var(--ink); background: rgba(246,243,236,.92); border: 1px solid var(--rule); border-radius: 999px; padding: 4px 10px; justify-self: end; box-shadow: 0 2px 8px rgba(36,34,31,.12); }
 .st { font-size: 12px; font-weight: 600; color: var(--leaf); }
 .marker-cluster { background: rgba(47,107,69,.28); border-radius: 50%; }
 .marker-cluster div { width: 30px; height: 30px; margin: 5px; border-radius: 50%; background: var(--leaf); color: #fff; font: 600 13px/30px var(--body); text-align: center; }
@@ -90,6 +91,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
   <div class="results" id="results" hidden></div>
   <button type="button" class="pill" id="sat" aria-pressed="true">Map</button>
   <button type="button" class="pill" id="locate">Near me</button>
+  <div class="imgdate" id="imgdate" hidden></div>
 </div>
 
 <aside class="panel" id="panel">
@@ -154,15 +156,38 @@ const street = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' });
 const sat = L.layerGroup([
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    maxZoom: 19, attribution: 'Imagery &copy; Esri, Maxar, Earthstar Geographics' }),
+    maxZoom: 19, attribution: 'Imagery &copy; Esri, Vantor, Earthstar Geographics' }),
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 })
 ]);
 sat.addTo(map);                                   // satellite is the default view
 const satBtn = document.getElementById('sat');
+// imagery date for the area in view, from Esri's World Imagery metadata
+const imgDate = document.getElementById('imgdate'); let imgT = null, imgSeq = 0;
+const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function updateImgDate() {
+  clearTimeout(imgT);
+  if (!map.hasLayer(sat) || map.getZoom() < 12) { imgDate.hidden = true; return; }
+  imgT = setTimeout(async () => {
+    const seq = ++imgSeq, c = map.getCenter().wrap(), b = map.getBounds(), sz = map.getSize();
+    const q = new URLSearchParams({ f: 'json', geometryType: 'esriGeometryPoint', geometry: c.lng + ',' + c.lat, sr: '4326', tolerance: '0',
+      mapExtent: [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].join(','), imageDisplay: sz.x + ',' + sz.y + ',96', layers: 'top', returnGeometry: 'false' });
+    try {
+      const j = await (await fetch('https://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/identify?' + q)).json();
+      if (seq !== imgSeq) return;
+      const a = ((j.results || []).find(r => /\d{8}/.test(r.attributes['DATE (YYYYMMDD)'] || '')) || {}).attributes;
+      if (!a) { imgDate.hidden = true; return; }
+      const d = a['DATE (YYYYMMDD)'];
+      imgDate.textContent = 'Imagery here: ' + (+d.slice(6, 8)) + ' ' + MON[+d.slice(4, 6) - 1] + ' ' + d.slice(0, 4) + (a.SOURCE && a.SOURCE !== 'Null' ? ', ' + a.SOURCE : '');
+      imgDate.hidden = false;
+    } catch (err) { imgDate.hidden = true; }
+  }, 400);
+}
+map.on('moveend', updateImgDate);
 satBtn.onclick = () => {
   const on = satBtn.getAttribute('aria-pressed') !== 'true';
   satBtn.setAttribute('aria-pressed', on); satBtn.textContent = on ? 'Map' : 'Satellite';
   if (on) { map.removeLayer(street); sat.addTo(map); } else { map.removeLayer(sat); street.addTo(map); }
+  updateImgDate();
 };
 
 const icon = cls => L.divIcon({ className: '', html: `<div class="pin ${cls}"></div>`, iconSize: [18, 18], iconAnchor: [9, 9] });
