@@ -179,6 +179,8 @@ const zc = L.control.zoom({ position: 'bottomright' });
 zc._zoomIn = function (e) { if (!this._disabled && map.getZoom() < map.getMaxZoom()) map.setZoomAround(visCenter(), map.getZoom() + (e.shiftKey ? 3 : 1)); };
 zc._zoomOut = function (e) { if (!this._disabled && map.getZoom() > map.getMinZoom()) map.setZoomAround(visCenter(), map.getZoom() - (e.shiftKey ? 3 : 1)); };
 zc.addTo(map);
+{ const off = viewPad().tl.subtract(viewPad().br).divideBy(2);   // open with the world centred in the visible area, clear of the panel
+  map.setView(map.unproject(map.project(L.latLng(15, 15), 2).subtract(off), 2), 2, { animate: false }); }
 const street = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' });
 const sat = L.layerGroup([
