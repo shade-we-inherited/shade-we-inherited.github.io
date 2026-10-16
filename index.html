@@ -164,7 +164,21 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 const API_URL = 'https://script.google.com/macros/s/AKfycbxY3ulRZZSQdYZ4zJrv-KA8GG8EpaL7l4gLzJ5gSPYqk0JiY-3xcyl5eOQbWXgrEiU2/exec';
 
 const map = L.map('map', { worldCopyJump: true, zoomControl: false, minZoom: 2 }).setView([15, 15], 2);
-L.control.zoom({ position: 'bottomright' }).addTo(map);
+// the part of the map not covered by the text panel (left on wide screens, bottom sheet on phones)
+function viewPad() {
+  const p = document.getElementById('panel');
+  return innerWidth > 640 ? { tl: L.point(p.offsetWidth + 32, 60), br: L.point(60, 60) } : { tl: L.point(30, 70), br: L.point(30, p.offsetHeight + 30) };
+}
+const visCenter = () => { const v = viewPad(), s = map.getSize(); return map.containerPointToLatLng(L.point((v.tl.x + s.x - v.br.x) / 2, (v.tl.y + s.y - v.br.y) / 2)); };
+function flyCentered(ll, z) {                     // fly so the point lands in the middle of the visible area
+  const off = viewPad().tl.subtract(viewPad().br).divideBy(2);
+  map.flyTo(map.unproject(map.project(ll, z).subtract(off), z), z, { duration: 1.2 });
+}
+// + and - zoom around the middle of the visible map; wheel and pinch already zoom around the cursor
+const zc = L.control.zoom({ position: 'bottomright' });
+zc._zoomIn = function (e) { if (!this._disabled && map.getZoom() < map.getMaxZoom()) map.setZoomAround(visCenter(), map.getZoom() + (e.shiftKey ? 3 : 1)); };
+zc._zoomOut = function (e) { if (!this._disabled && map.getZoom() > map.getMinZoom()) map.setZoomAround(visCenter(), map.getZoom() - (e.shiftKey ? 3 : 1)); };
+zc.addTo(map);
 const street = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' });
 const sat = L.layerGroup([
@@ -204,8 +218,14 @@ satBtn.onclick = () => {
 };
 
 const icon = cls => L.divIcon({ className: '', html: `<div class="pin ${cls}"></div>`, iconSize: [18, 18], iconAnchor: [9, 9] });
-const cluster = L.markerClusterGroup({ showCoverageOnHover: false, maxClusterRadius: 45 });
+const cluster = L.markerClusterGroup({ showCoverageOnHover: false, maxClusterRadius: 45, zoomToBoundsOnClick: false });
 map.addLayer(cluster);
+const PIN_ZOOM = 17;                              // close enough to see the trees, wide enough to pan around
+cluster.on('clusterclick', e => {                 // fly to the trees in a cluster, clear of the panel
+  if (map.getZoom() >= PIN_ZOOM) { e.layer.spiderfy(); return; }
+  const v = viewPad();
+  map.flyToBounds(e.layer.getBounds(), { paddingTopLeft: v.tl, paddingBottomRight: v.br, maxZoom: PIN_ZOOM, duration: 1.2 });
+});
 const esc = s => String(s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const STATUS = { standing: 'Still standing', gone: 'Cut down or gone' };
 // private edit tokens kept in this browser; the server stores only their SHA-256 hash
@@ -236,6 +256,11 @@ function addPin(p, cls, tag) {                     // the count only includes tr
   if (p.pid && markers[p.pid]) { was = markers[p.pid]._pub; cluster.removeLayer(markers[p.pid]); if (was) total--; }
   const m = L.marker([+p.lat, +p.lon], { icon: icon(cls || (p.status === 'gone' ? 'gone' : '')) }).bindPopup(card(p, tag), popOpts()).addTo(cluster);
   m._pub = !tag || was;                            // an edit of an approved tree stays public in its earlier version
+  m.on('click', () => {                           // from far out, fly in to the tree first, then open its story
+    if (map.getZoom() >= 14) return;
+    m.closePopup(); flyCentered(m.getLatLng(), PIN_ZOOM);
+    map.once('moveend', () => cluster.zoomToShowLayer(m, () => m.openPopup()));
+  });
   if (p.pid) markers[p.pid] = m;
   if (m._pub) total++; setCount();
 }
