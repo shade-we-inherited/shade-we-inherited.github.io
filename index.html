@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Shade We Inherited</title>
+<meta name="description" content="A shared map of the trees that shaped us, with a line or three about each.">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600&family=Barlow:wght@400;500;600&display=swap">
+<style>
+:root {
+  --paper: #f6f3ec; --ink: #24221f; --sub: #6f6a62; --rule: #d6cfc2; --leaf: #2f6b45; --leaf-soft: #e4ecdf;
+  --display: "Cormorant Garamond", Georgia, serif; --body: "Barlow", "Helvetica Neue", Arial, sans-serif;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; background: var(--paper); color: var(--ink); font-family: var(--body); }
+#map { position: fixed; inset: 0; background: #e9e5dc; }
+.panel { position: fixed; z-index: 1000; top: max(16px, env(safe-area-inset-top)); left: max(16px, env(safe-area-inset-left)); width: 360px; max-height: calc(100% - 32px); overflow: auto;
+  background: var(--paper); border: 1px solid var(--rule); border-radius: 10px; box-shadow: 0 6px 24px rgba(36,34,31,.12); padding: 20px 20px 16px; display: grid; gap: 12px; }
+h1 { font-family: var(--display); font-weight: 600; font-size: 32px; line-height: 1.05; margin: 0; text-wrap: balance; }
+p { margin: 0; font-size: 15px; line-height: 1.5; }
+.small { font-size: 13px; color: var(--sub); }
+.count { font-size: 14px; font-weight: 500; }
+.step { display: flex; gap: 10px; align-items: baseline; font-weight: 500; }
+.step b { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--ink); color: var(--paper); font-size: 13px; flex: none; }
+form { display: grid; gap: 10px; }
+label { display: grid; gap: 4px; font-size: 13px; font-weight: 500; }
+input[type=text], textarea { font: 15px var(--body); color: var(--ink); background: #fff; border: 1px solid var(--rule); border-radius: 6px; padding: 8px 10px; width: 100%; }
+textarea { resize: vertical; min-height: 64px; }
+.row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.check { display: flex; gap: 8px; align-items: flex-start; font-weight: 400; font-size: 13px; line-height: 1.4; }
+.check input { margin-top: 2px; }
+.panel button, .ctrl button { font: 600 15px var(--body); border-radius: 6px; padding: 10px 14px; cursor: pointer; border: 1px solid var(--ink); }
+.leaflet-container a.leaflet-popup-close-button { width: 28px; height: 28px; font: 22px/26px var(--body); color: var(--sub); top: 4px; right: 4px; }
+.leaflet-container a.leaflet-popup-close-button:hover { color: var(--ink); }
+.leaflet-popup-content { margin: 14px 30px 14px 16px; }
+fieldset { border: 0; margin: 0; padding: 0; display: grid; gap: 6px; }
+legend { font-size: 13px; font-weight: 500; padding: 0; margin-bottom: 4px; }
+.choices { display: flex; flex-wrap: wrap; gap: 6px; }
+.choices label { display: inline-flex; align-items: center; gap: 6px; font-weight: 400; font-size: 14px; border: 1px solid var(--rule); border-radius: 999px; padding: 5px 12px; cursor: pointer; background: #fff; }
+.choices input { margin: 0; accent-color: var(--leaf); }
+.hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+.primary { background: var(--ink); color: var(--paper); }
+.primary:disabled { opacity: .4; cursor: default; }
+.ghost { background: transparent; color: var(--ink); }
+.thanks { background: var(--leaf-soft); border-radius: 6px; padding: 10px 12px; font-size: 14px; }
+.ctrl { position: fixed; z-index: 1000; right: max(16px, env(safe-area-inset-right)); display: grid; gap: 8px; }
+.ctrl.top { top: max(16px, env(safe-area-inset-top)); }
+.search { display: flex; background: var(--paper); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; box-shadow: 0 4px 16px rgba(36,34,31,.1); }
+.search input { border: 0; border-radius: 0; width: 220px; background: transparent; }
+.search button { border: 0; border-left: 1px solid var(--rule); border-radius: 0; background: transparent; padding: 8px 12px; }
+.results { background: var(--paper); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; }
+.results button { display: block; width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--rule); border-radius: 0; background: transparent; font-weight: 400; font-size: 14px; padding: 8px 12px; }
+.pill { background: var(--paper); border: 1px solid var(--rule); box-shadow: 0 4px 16px rgba(36,34,31,.1); font-weight: 500; font-size: 14px; justify-self: end; }
+.pill[aria-pressed=true] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.pin { width: 18px; height: 18px; border-radius: 50%; background: var(--leaf); border: 2.5px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.4); }
+.pin.mine { background: #c2622d; }
+.pin.gone { background: #fff; border: 3px solid var(--leaf); }
+.st { font-size: 12px; font-weight: 600; color: var(--leaf); }
+.marker-cluster { background: rgba(47,107,69,.28); border-radius: 50%; }
+.marker-cluster div { width: 30px; height: 30px; margin: 5px; border-radius: 50%; background: var(--leaf); color: #fff; font: 600 13px/30px var(--body); text-align: center; }
+.leaflet-popup-content-wrapper { border-radius: 8px; background: var(--paper); color: var(--ink); }
+.leaflet-popup-tip { background: var(--paper); }
+.card { font-family: var(--body); display: grid; gap: 4px; min-width: 180px; }
+.card .t { font-family: var(--display); font-weight: 600; font-size: 20px; line-height: 1.1; }
+.card .s { font-size: 14px; line-height: 1.45; }
+.card .w { font-size: 12px; color: var(--sub); }
+.tag { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--sub); }
+.credit { font-size: 12px; color: var(--sub); }
+button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--leaf); outline-offset: 2px; }
+@media (max-width: 640px) {
+  .panel { top: auto; bottom: 0; left: 0; right: 0; width: auto; max-height: 55%; border-radius: 14px 14px 0 0; padding: 16px max(16px, env(safe-area-inset-left)) max(16px, env(safe-area-inset-bottom)); }
+  h1 { font-size: 26px; }
+  .search input { width: 150px; }
+  .leaflet-bottom.leaflet-right { bottom: 55%; }
+}
+</style>
+</head>
+<body>
+<div id="map" aria-label="World map of pinned trees"></div>
+
+<div class="ctrl top">
+  <form class="search" id="search" role="search">
+    <input type="text" id="q" placeholder="Search a place" aria-label="Search a place" autocomplete="off">
+    <button type="submit" aria-label="Search">Go</button>
+  </form>
+  <div class="results" id="results" hidden></div>
+  <button type="button" class="pill" id="sat" aria-pressed="false">Satellite</button>
+  <button type="button" class="pill" id="locate">Near me</button>
+</div>
+
+<aside class="panel" id="panel">
+  <h1>Shade We Inherited</h1>
+  <p>Somewhere there is a tree that shaped a little piece of your life, whether you sat in its shade, picked its fruit or watched the world go by from under it. Someone planted it, or it came up on its own, and you got to enjoy it. Pin it on the map with a line or three about what it meant to you, and together we'll map the shade we inherited.</p>
+  <p class="count" id="count"></p>
+
+  <div id="s1">
+    <p class="step"><b>1</b> Tap the map where your tree stands</p>
+    <p class="small">Schools, campuses, streets, parks, farms and forests all count. Zoom in and switch to Satellite to find the exact tree, and please keep your home off the map.</p>
+  </div>
+
+  <form id="f" hidden>
+    <p class="step"><b>2</b> Tell us about it</p>
+    <label>The tree, if you know it
+      <input type="text" id="tree" maxlength="60" placeholder="The big trees by the school pitch">
+    </label>
+    <label>Its story
+      <textarea id="why" maxlength="300" required placeholder="The shade of these trees was epic. I watched our high school soccer matches from under them, and I'm glad to see them still going strong."></textarea>
+    </label>
+    <fieldset>
+      <legend>Is it still there?</legend>
+      <div class="choices">
+        <label><input type="radio" name="status" value="standing" checked> Still standing</label>
+        <label><input type="radio" name="status" value="gone"> Cut down or gone</label>
+        <label><input type="radio" name="status" value="unsure"> Not sure</label>
+      </div>
+    </fieldset>
+    <input class="hp" type="text" id="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+    <div class="row">
+      <label>First name
+        <input type="text" id="name" maxlength="30" placeholder="Optional">
+      </label>
+      <label>Country
+        <input type="text" id="country" maxlength="40" placeholder="Optional">
+      </label>
+    </div>
+    <label class="check"><input type="checkbox" id="ok" required> I'm happy for this pin, its story and my first name to appear on the public map.</label>
+    <div class="row">
+      <button type="button" class="ghost" id="cancel">Move pin</button>
+      <button type="submit" class="primary" id="send" disabled>Add my tree</button>
+    </div>
+  </form>
+
+  <div id="done" hidden>
+    <p class="thanks" id="thanksText">Thank you. Your tree will appear on the map once it has been checked.</p>
+    <button type="button" class="ghost" id="again" style="margin-top:10px">Pin another tree</button>
+  </div>
+
+  <p class="small">Pins appear after a quick check, usually within a day. Made by Elias Omondi. The stories become Day 16 of his #30DayMapChallenge on 16 November.</p>
+</aside>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script>
+// Backend: Google Apps Script web app writing to a Sheet; GET returns approved pins only
+const API_URL = 'https://script.google.com/macros/s/AKfycbxY3ulRZZSQdYZ4zJrv-KA8GG8EpaL7l4gLzJ5gSPYqk0JiY-3xcyl5eOQbWXgrEiU2/exec';
+
+const map = L.map('map', { worldCopyJump: true, zoomControl: false, minZoom: 2 }).setView([15, 15], 2);
+L.control.zoom({ position: 'bottomright' }).addTo(map);
+const street = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' }).addTo(map);
+const sat = L.layerGroup([
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 19, attribution: 'Imagery &copy; Esri, Maxar, Earthstar Geographics' }),
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 })
+]);
+const satBtn = document.getElementById('sat');
+satBtn.onclick = () => {
+  const on = satBtn.getAttribute('aria-pressed') !== 'true';
+  satBtn.setAttribute('aria-pressed', on); satBtn.textContent = on ? 'Map' : 'Satellite';
+  if (on) { map.removeLayer(street); sat.addTo(map); } else { map.removeLayer(sat); street.addTo(map); }
+};
+
+const icon = cls => L.divIcon({ className: '', html: `<div class="pin ${cls}"></div>`, iconSize: [18, 18], iconAnchor: [9, 9] });
+const cluster = L.markerClusterGroup({ showCoverageOnHover: false, maxClusterRadius: 45 });
+map.addLayer(cluster);
+const esc = s => String(s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const STATUS = { standing: 'Still standing', gone: 'Cut down or gone' };
+function card(p, tag) {
+  const who = [p.name, p.country].filter(Boolean).join(', ');
+  return `<div class="card">${tag ? `<span class="tag">${tag}</span>` : ''}<span class="t">${esc(p.tree || 'A tree')}</span><span class="s">${esc(p.story)}</span>${STATUS[p.status] ? `<span class="st">${STATUS[p.status]}</span>` : ''}${who ? `<span class="w">${esc(who)}</span>` : ''}</div>`;
+}
+let total = 0;
+function setCount() { document.getElementById('count').textContent = total === 0 ? 'Be one of the first to pin a tree' : total === 1 ? '1 tree on the map so far' : `${total} trees on the map so far`; }
+function addPin(p, cls, tag) {
+  if (!isFinite(+p.lat) || !isFinite(+p.lon)) return;
+  L.marker([+p.lat, +p.lon], { icon: icon(cls || (p.status === 'gone' ? 'gone' : '')) }).bindPopup(card(p, tag), { maxWidth: 280 }).addTo(cluster);
+  total++; setCount();
+}
+setCount();
+if (API_URL) fetch(API_URL).then(r => r.json()).then(list => list.forEach(p => addPin(p))).catch(() => {});
+
+// placing a pin
+const f = document.getElementById('f'), s1 = document.getElementById('s1'), done = document.getElementById('done');
+let draft = null;
+function place(latlng) {
+  const ll = latlng.wrap();
+  if (draft) draft.setLatLng(ll);
+  else { draft = L.marker(ll, { icon: icon('mine'), draggable: true, zIndexOffset: 1000 }).addTo(map); }
+  s1.hidden = true; f.hidden = false;
+  if (map.getZoom() < 15) map.flyTo(ll, Math.max(map.getZoom(), 16), { duration: 0.8 });
+}
+map.on('click', e => { if (done.hidden) place(e.latlng); });
+document.getElementById('cancel').onclick = () => { if (draft) { map.removeLayer(draft); draft = null; } f.hidden = true; s1.hidden = false; };
+const why = document.getElementById('why'), ok = document.getElementById('ok'), send = document.getElementById('send');
+const check = () => { send.disabled = !(why.value.trim().length > 2 && ok.checked && draft); };
+why.oninput = check; ok.onchange = check;
+f.onsubmit = async e => {
+  e.preventDefault(); check(); if (send.disabled) return;
+  const ll = draft.getLatLng();
+  const p = { lat: +ll.lat.toFixed(5), lon: +ll.lng.toFixed(5), tree: document.getElementById('tree').value.trim(), story: why.value.trim(),
+    status: (document.querySelector('input[name=status]:checked') || {}).value || 'unsure',
+    name: document.getElementById('name').value.trim(), country: document.getElementById('country').value.trim(), website: document.getElementById('website').value };
+  send.disabled = true; send.textContent = 'Adding';
+  let msg = 'Thank you. Your tree will appear on the map once it has been checked, usually within a day.';
+  if (API_URL) {
+    try { await fetch(API_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(p) }); }
+    catch (err) { msg = 'Something went wrong sending your tree. Please check your connection and try again.'; }
+  } else { msg = 'Preview only: nothing was saved.'; }
+  document.getElementById('thanksText').textContent = msg;
+  map.removeLayer(draft); draft = null; addPin(p, 'mine', 'Your tree, waiting for a check');
+  f.reset(); send.textContent = 'Add my tree'; f.hidden = true; done.hidden = false;
+};
+document.getElementById('again').onclick = () => { done.hidden = true; s1.hidden = false; check(); };
+
+// search (OpenStreetMap Nominatim, light use)
+const res = document.getElementById('results');
+document.getElementById('search').onsubmit = async e => {
+  e.preventDefault(); const q = document.getElementById('q').value.trim(); if (!q) return;
+  res.hidden = false; res.innerHTML = '<button type="button" disabled>Searching</button>';
+  try {
+    const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=5&q=' + encodeURIComponent(q), { headers: { 'Accept-Language': 'en' } });
+    const j = await r.json();
+    res.innerHTML = j.length ? '' : '<button type="button" disabled>No places found</button>';
+    j.forEach(x => { const b = document.createElement('button'); b.type = 'button'; b.textContent = x.display_name;
+      b.onclick = () => { res.hidden = true; const bb = x.boundingbox.map(Number); map.flyToBounds([[bb[0], bb[2]], [bb[1], bb[3]]], { maxZoom: 17, duration: 1.2 }); };
+      res.appendChild(b); });
+  } catch (err) { res.innerHTML = '<button type="button" disabled>Search is unavailable right now</button>'; }
+};
+document.getElementById('locate').onclick = () => map.locate({ setView: true, maxZoom: 17 });
+map.on('locationerror', () => { res.hidden = false; res.innerHTML = '<button type="button" disabled>Location not shared. Search for the place instead.</button>'; setTimeout(() => res.hidden = true, 4000); });
+</script>
+</body>
+</html>
