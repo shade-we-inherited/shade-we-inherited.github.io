@@ -228,14 +228,16 @@ const popOpts = () => innerWidth > 640
   : { maxWidth: 260, autoPanPaddingBottomRight: L.point(20, document.getElementById('panel').offsetHeight + 20), autoPanPaddingTopLeft: L.point(20, 70) };
 let total = 0;
 function setCount() { document.getElementById('count').textContent = total === 0 ? 'Be one of the first to pin a tree' : total === 1 ? '1 tree on the map so far' : `${total} trees on the map so far`; }
-function addPin(p, cls, tag) {
+function addPin(p, cls, tag) {                     // the count only includes trees the public can see
   if (!isFinite(+p.lat) || !isFinite(+p.lon)) return;
-  if (p.pid && markers[p.pid]) { cluster.removeLayer(markers[p.pid]); total--; }
+  let was = false;
+  if (p.pid && markers[p.pid]) { was = markers[p.pid]._pub; cluster.removeLayer(markers[p.pid]); if (was) total--; }
   const m = L.marker([+p.lat, +p.lon], { icon: icon(cls || (p.status === 'gone' ? 'gone' : '')) }).bindPopup(card(p, tag), popOpts()).addTo(cluster);
+  m._pub = !tag || was;                            // an edit of an approved tree stays public in its earlier version
   if (p.pid) markers[p.pid] = m;
-  total++; setCount();
+  if (m._pub) total++; setCount();
 }
-function dropPin(pid) { if (markers[pid]) { cluster.removeLayer(markers[pid]); delete markers[pid]; total--; setCount(); } }
+function dropPin(pid) { if (markers[pid]) { cluster.removeLayer(markers[pid]); if (markers[pid]._pub) total--; delete markers[pid]; setCount(); } }
 setCount();
 (async () => {
   const toks = store.get();
