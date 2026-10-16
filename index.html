@@ -88,7 +88,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
     <button type="submit" aria-label="Search">Go</button>
   </form>
   <div class="results" id="results" hidden></div>
-  <button type="button" class="pill" id="sat" aria-pressed="false">Satellite</button>
+  <button type="button" class="pill" id="sat" aria-pressed="true">Map</button>
   <button type="button" class="pill" id="locate">Near me</button>
 </div>
 
@@ -99,7 +99,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 
   <div id="s1">
     <p class="step"><b>1</b> Tap the map where your tree stands</p>
-    <p class="small">Schools, campuses, streets, parks, farms and forests all count. Zoom in and switch to Satellite to find the exact tree, and please keep your home off the map.</p>
+    <p class="small">Schools, campuses, streets, parks, farms and forests all count. Zoom in on the satellite view to find the exact tree, and please keep your home off the map.</p>
   </div>
 
   <form id="f" hidden>
@@ -151,12 +151,13 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbxY3ulRZZSQdYZ4zJrv-KA8
 const map = L.map('map', { worldCopyJump: true, zoomControl: false, minZoom: 2 }).setView([15, 15], 2);
 L.control.zoom({ position: 'bottomright' }).addTo(map);
 const street = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' }).addTo(map);
+  maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' });
 const sat = L.layerGroup([
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
     maxZoom: 19, attribution: 'Imagery &copy; Esri, Maxar, Earthstar Geographics' }),
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 })
 ]);
+sat.addTo(map);                                   // satellite is the default view
 const satBtn = document.getElementById('sat');
 satBtn.onclick = () => {
   const on = satBtn.getAttribute('aria-pressed') !== 'true';
@@ -173,11 +174,15 @@ function card(p, tag) {
   const who = [p.name, p.country].filter(Boolean).join(', ');
   return `<div class="card">${tag ? `<span class="tag">${tag}</span>` : ''}<span class="t">${esc(p.tree || 'A tree')}</span><span class="s">${esc(p.story)}</span>${STATUS[p.status] ? `<span class="st">${STATUS[p.status]}</span>` : ''}${who ? `<span class="w">${esc(who)}</span>` : ''}</div>`;
 }
+// keep story cards clear of the text panel (left on wide screens, bottom sheet on phones)
+const popOpts = () => innerWidth > 640
+  ? { maxWidth: 280, autoPanPaddingTopLeft: L.point(document.getElementById('panel').offsetWidth + 40, 20) }
+  : { maxWidth: 260, autoPanPaddingBottomRight: L.point(20, document.getElementById('panel').offsetHeight + 20), autoPanPaddingTopLeft: L.point(20, 70) };
 let total = 0;
 function setCount() { document.getElementById('count').textContent = total === 0 ? 'Be one of the first to pin a tree' : total === 1 ? '1 tree on the map so far' : `${total} trees on the map so far`; }
 function addPin(p, cls, tag) {
   if (!isFinite(+p.lat) || !isFinite(+p.lon)) return;
-  L.marker([+p.lat, +p.lon], { icon: icon(cls || (p.status === 'gone' ? 'gone' : '')) }).bindPopup(card(p, tag), { maxWidth: 280 }).addTo(cluster);
+  L.marker([+p.lat, +p.lon], { icon: icon(cls || (p.status === 'gone' ? 'gone' : '')) }).bindPopup(card(p, tag), popOpts()).addTo(cluster);
   total++; setCount();
 }
 setCount();
