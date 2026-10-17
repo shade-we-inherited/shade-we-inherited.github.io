@@ -22,6 +22,7 @@ html, body { height: 100%; margin: 0; background: var(--paper); color: var(--ink
   background: var(--paper); border: 1px solid var(--rule); border-radius: 10px; box-shadow: 0 6px 24px rgba(36,34,31,.12); padding: 20px 20px 16px; display: grid; gap: 12px; }
 h1 { font-family: var(--display); font-weight: 600; font-size: 32px; line-height: 1.05; margin: 0; text-wrap: balance; }
 p { margin: 0; font-size: 15px; line-height: 1.5; }
+.more { display: none; }
 .small { font-size: 13px; color: var(--sub); }
 .count { font-size: 14px; font-weight: 500; }
 .step { display: flex; gap: 10px; align-items: baseline; font-weight: 500; }
@@ -80,10 +81,30 @@ legend { font-size: 13px; font-weight: 500; padding: 0; margin-bottom: 4px; }
 .credit { font-size: 12px; color: var(--sub); }
 button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--leaf); outline-offset: 2px; }
 @media (max-width: 640px) {
-  .panel { top: auto; bottom: 0; left: 0; right: 0; width: auto; max-height: 55%; border-radius: 14px 14px 0 0; padding: 16px max(16px, env(safe-area-inset-left)) max(16px, env(safe-area-inset-bottom)); }
-  h1 { font-size: 26px; }
-  .search input { width: 150px; }
-  .leaflet-bottom.leaflet-right { bottom: 55%; }
+  /* bottom sheet: short by default, the intro opens with Read more, and the form takes over the sheet while pinning */
+  .panel { top: auto; bottom: 0; left: 0; right: 0; width: auto; max-height: 46%; border-radius: 14px 14px 0 0; gap: 10px;
+    padding: 14px max(16px, env(safe-area-inset-left)) max(14px, env(safe-area-inset-bottom)); box-shadow: 0 -4px 20px rgba(36,34,31,.14); }
+  .panel.open { max-height: 72%; }
+  .panel:has(#f:not([hidden])), .panel:has(#done:not([hidden])) { max-height: 64%; }
+  h1 { font-size: 24px; }
+  .intro { font-size: 14px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .panel.open .intro { display: block; }
+  .panel .more { display: block; justify-self: start; border: 0; background: none; padding: 0; margin-top: -4px; font: 600 14px var(--body); color: var(--leaf); text-decoration: underline; text-underline-offset: 3px; }
+  .panel:has(#f:not([hidden])) :is(.intro, .more, .count, .credit), .panel:has(#done:not([hidden])) :is(.intro, .more) { display: none; }
+  .credit { font-size: 11px; }
+  /* top controls: search across the top, the two buttons in one row under it */
+  .ctrl.top { left: max(12px, env(safe-area-inset-left)); right: max(12px, env(safe-area-inset-right)); top: max(12px, env(safe-area-inset-top)); width: auto;
+    grid-template-columns: 1fr auto auto; align-items: center; gap: 8px; }
+  .ctrl.top .search { grid-column: 1 / -1; }
+  .ctrl.top .results { position: absolute; top: 48px; left: 0; right: 0; z-index: 2; box-shadow: 0 6px 20px rgba(36,34,31,.18); }
+  .ctrl.top .imgdate { grid-row: 2; grid-column: 1; justify-self: start; }
+  #sat { grid-row: 2; grid-column: 2; } #locate { grid-row: 2; grid-column: 3; }
+  .pill { padding: 7px 12px !important; font-size: 13px !important; }
+  .search input, .search button { font-size: 16px; }      /* 16px stops iPhones zooming the page when the box is tapped */
+  input[type=text], textarea { font-size: 16px; }
+  .leaflet-control-zoom { display: none; }                 /* pinch to zoom on phones */
+  .leaflet-bottom.leaflet-right { bottom: var(--sheet, 46%); }
+  .leaflet-control-attribution { font-size: 10px; }
 }
 </style>
 </head>
@@ -103,7 +124,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 
 <aside class="panel" id="panel">
   <h1>Shade We Inherited</h1>
-  <p>Somewhere there is a tree that shaped a little piece of your life, whether you sat in its shade, picked its fruit or watched the world go by from under it. Someone planted it, or it came up on its own, and you got to enjoy it. Pin it on the map with a line or three about what it meant to you, and together we'll map the shade we inherited.</p>
+  <p class="intro" id="intro">Somewhere there is a tree that shaped a little piece of your life, whether you sat in its shade, picked its fruit or watched the world go by from under it. Someone planted it, or it came up on its own, and you got to enjoy it. Pin it on the map with a line or three about what it meant to you, and together we'll map the shade we inherited.</p>
+  <button type="button" class="more" id="more" aria-expanded="false">Read more</button>
   <p class="count" id="count"></p>
 
   <div id="s1">
@@ -154,7 +176,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
     <button type="button" class="ghost" id="again" style="margin-top:10px">Pin another tree</button>
   </div>
 
-  <p class="small">Pins appear after a quick check, usually within a day. Made by Elias Omondi. The stories become Day 16 of his #30DayMapChallenge on 16 November.</p>
+  <p class="small credit">Pins appear after a quick check, usually within a day. Made by Elias Omondi. The stories become Day 16 of his #30DayMapChallenge on 16 November.</p>
 </aside>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -167,7 +189,7 @@ const map = L.map('map', { worldCopyJump: true, zoomControl: false, minZoom: 2 }
 // the part of the map not covered by the text panel (left on wide screens, bottom sheet on phones)
 function viewPad() {
   const p = document.getElementById('panel');
-  return innerWidth > 640 ? { tl: L.point(p.offsetWidth + 32, 60), br: L.point(60, 60) } : { tl: L.point(30, 70), br: L.point(30, p.offsetHeight + 30) };
+  return innerWidth > 640 ? { tl: L.point(p.offsetWidth + 32, 60), br: L.point(60, 60) } : { tl: L.point(30, 110), br: L.point(30, p.offsetHeight + 20) };
 }
 const visCenter = () => { const v = viewPad(), s = map.getSize(); return map.containerPointToLatLng(L.point((v.tl.x + s.x - v.br.x) / 2, (v.tl.y + s.y - v.br.y) / 2)); };
 function flyCentered(ll, z) {                     // fly so the point lands in the middle of the visible area
@@ -249,7 +271,7 @@ function card(p, tag) {
 // keep story cards clear of the text panel (left on wide screens, bottom sheet on phones)
 const popOpts = () => innerWidth > 640
   ? { maxWidth: 280, autoPanPaddingTopLeft: L.point(document.getElementById('panel').offsetWidth + 40, 20) }
-  : { maxWidth: 260, autoPanPaddingBottomRight: L.point(20, document.getElementById('panel').offsetHeight + 20), autoPanPaddingTopLeft: L.point(20, 70) };
+  : { maxWidth: 260, autoPanPaddingBottomRight: L.point(20, document.getElementById('panel').offsetHeight + 20), autoPanPaddingTopLeft: L.point(20, 120) };
 let total = 0;
 function setCount() { document.getElementById('count').textContent = total === 0 ? 'Be one of the first to pin a tree' : total === 1 ? '1 tree on the map so far' : `${total} trees on the map so far`; }
 function addPin(p, cls, tag) {                     // the count only includes trees the public can see
@@ -294,7 +316,8 @@ function place(latlng) {
   if (draft) draft.setLatLng(ll);
   else { draft = L.marker(ll, { icon: icon('mine'), draggable: true, zIndexOffset: 1000 }).addTo(map); }
   s1.hidden = true; f.hidden = false; check();
-  if (map.getZoom() < 15) map.flyTo(ll, Math.max(map.getZoom(), 16), { duration: 0.8 });
+  if (map.getZoom() < 15) flyCentered(ll, Math.max(map.getZoom(), 16));
+  else if (innerWidth <= 640) map.panTo(map.unproject(map.project(ll).subtract(viewPad().tl.subtract(viewPad().br).divideBy(2))));
 }
 function resetForm() {
   if (draft) { map.removeLayer(draft); draft = null; }
@@ -315,7 +338,7 @@ async function startEdit(t) {
   document.getElementById('name').value = p.name || ''; document.getElementById('country').value = p.country || '';
   const r = document.querySelector(`input[name=status][value="${p.status}"]`); if (r) r.checked = true;
   ok.checked = true; stepT.textContent = 'Edit your tree'; send.textContent = 'Save changes'; rm.hidden = false; hint.hidden = false;
-  place(L.latLng(+p.lat, +p.lon)); map.flyTo([+p.lat, +p.lon], 17, { duration: 0.8 });
+  place(L.latLng(+p.lat, +p.lon)); flyCentered(L.latLng(+p.lat, +p.lon), 17);
 }
 map.on('click', e => { if (done.hidden && !editTok) place(e.latlng); });
 map.getContainer().addEventListener('click', e => { const b = e.target.closest('.editbtn'); if (b) { e.stopPropagation(); startEdit(b.dataset.token); } }, true);
@@ -366,6 +389,10 @@ document.getElementById('copy').onclick = async () => {
 };
 document.getElementById('again').onclick = () => { done.hidden = true; s1.hidden = false; document.getElementById('linkbox').hidden = true; check(); };
 
+// phones: Read more opens the intro, and the sheet height keeps map controls and flights clear of it
+const panelEl = document.getElementById('panel'), moreBtn = document.getElementById('more');
+moreBtn.onclick = () => { const o = panelEl.classList.toggle('open'); moreBtn.textContent = o ? 'Show less' : 'Read more'; moreBtn.setAttribute('aria-expanded', o); };
+new ResizeObserver(() => document.documentElement.style.setProperty('--sheet', panelEl.offsetHeight + 'px')).observe(panelEl);
 // search (OpenStreetMap Nominatim, light use)
 const res = document.getElementById('results');
 document.getElementById('search').onsubmit = async e => {
