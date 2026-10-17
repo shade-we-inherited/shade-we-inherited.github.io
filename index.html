@@ -339,6 +339,7 @@ const why = document.getElementById('why'), ok = document.getElementById('ok'), 
 const rm = document.getElementById('remove'), hint = document.getElementById('editHint'), stepT = document.getElementById('formStep');
 let draft = null, editTok = null;
 function place(latlng) {
+  sheetTo('normal');                                // a sheet dragged down to its peek comes back up for the form
   const ll = latlng.wrap();
   if (draft) draft.setLatLng(ll);
   else { draft = L.marker(ll, { icon: icon('mine'), draggable: true, zIndexOffset: 1000 }).addTo(map); }
@@ -371,6 +372,7 @@ map.on('click', e => { if (panelEl.classList.contains('reading')) { closeStory()
 // phones: show a tree's story in the bottom sheet and keep the map clear
 let storyM = null;
 function showStory(m) {
+  sheetTo('normal');
   if (storyM && storyM._icon) storyM._icon.firstChild.classList.remove('sel');
   storyM = m; document.getElementById('storyBody').innerHTML = card(m._p, m._tag);
   document.getElementById('story').hidden = false; panelEl.classList.add('reading'); panelEl.scrollTop = 0;
