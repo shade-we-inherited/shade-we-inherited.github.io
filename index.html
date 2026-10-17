@@ -23,6 +23,7 @@ html, body { height: 100%; margin: 0; background: var(--paper); color: var(--ink
 h1 { font-family: var(--display); font-weight: 600; font-size: 32px; line-height: 1.05; margin: 0; text-wrap: balance; }
 p { margin: 0; font-size: 15px; line-height: 1.5; }
 .more { display: none; }
+.grab { display: none; }
 .small { font-size: 13px; color: var(--sub); }
 .count { font-size: 14px; font-weight: 500; }
 .step { display: flex; gap: 10px; align-items: baseline; font-weight: 500; }
@@ -108,6 +109,14 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
   .leaflet-control-attribution { font-size: 10px; }
   /* phones: a tapped tree's story opens in the sheet, the way map apps show a place */
   .panel.reading > :not(#story) { display: none !important; }
+  /* drag handle: drag the sheet down to a peek of the title and count, up to read the full intro */
+  .panel { transition: transform .22s ease, max-height .22s ease; }
+  .panel .grab { display: flex; justify-content: center; align-items: center; height: 26px; margin: -12px -16px -6px; touch-action: none; cursor: grab; border: 0; border-radius: 0; background: none; padding: 0; width: calc(100% + 32px); outline: none; }
+  .panel .grab span { width: 40px; height: 5px; border-radius: 3px; background: #c9c1b2; }
+  .panel.collapsed > :not(.grab, h1, .count) { display: none !important; }
+  .panel.collapsed { gap: 4px; }
+  .panel.collapsed h1 { font-size: 20px; }
+  .panel:has(#f:not([hidden])) .grab, .panel:has(#done:not([hidden])) .grab { display: none; }
   #story { display: grid; gap: 6px; position: relative; padding-right: 36px; }
   #story .card { min-width: 0; gap: 6px; }
   #story .card .t { font-size: 24px; }
@@ -133,6 +142,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 </div>
 
 <aside class="panel" id="panel">
+  <button type="button" class="grab" id="grab" aria-label="Show more or less of this panel"><span></span></button>
   <div id="story" hidden><button type="button" id="storyClose" aria-label="Close story">&times;</button><div id="storyBody"></div></div>
   <h1>Shade We Inherited</h1>
   <p class="intro" id="intro">Somewhere there is a tree that shaped a little piece of your life, whether you sat in its shade, picked its fruit or watched the world go by from under it. Someone planted it, or it came up on its own, and you got to enjoy it. Pin it on the map with a line or three about what it meant to you, and together we'll map the shade we inherited.</p>
@@ -421,6 +431,23 @@ document.getElementById('again').onclick = () => { done.hidden = true; s1.hidden
 // phones: Read more opens the intro, and the sheet height keeps map controls and flights clear of it
 const panelEl = document.getElementById('panel'), moreBtn = document.getElementById('more');
 moreBtn.onclick = () => { const o = panelEl.classList.toggle('open'); moreBtn.textContent = o ? 'Show less' : 'Read more'; moreBtn.setAttribute('aria-expanded', o); };
+// drag handle on phones: down to peek, up to the full intro, a tap switches between peek and normal
+const grabEl = document.getElementById('grab'); let gy = null, gdy = 0;
+function sheetTo(state) {          // 'peek' | 'normal' | 'full'
+  panelEl.classList.toggle('collapsed', state === 'peek'); panelEl.classList.toggle('open', state === 'full');
+  moreBtn.textContent = state === 'full' ? 'Show less' : 'Read more'; moreBtn.setAttribute('aria-expanded', state === 'full');
+}
+const sheetState = () => panelEl.classList.contains('collapsed') ? 'peek' : panelEl.classList.contains('open') ? 'full' : 'normal';
+grabEl.addEventListener('pointerdown', e => { gy = e.clientY; gdy = 0; grabEl.setPointerCapture(e.pointerId); panelEl.style.transition = 'none'; });
+grabEl.addEventListener('pointermove', e => { if (gy === null) return; gdy = e.clientY - gy; panelEl.style.transform = `translateY(${Math.max(gdy, -30)}px)`; });
+function grabEnd() {
+  if (gy === null) return; gy = null; panelEl.style.transition = ''; panelEl.style.transform = '';
+  const st = sheetState();
+  if (Math.abs(gdy) < 8) sheetTo(st === 'peek' ? 'normal' : 'peek');
+  else if (gdy > 40) sheetTo(st === 'full' ? 'normal' : 'peek');
+  else if (gdy < -40) sheetTo(st === 'peek' ? 'normal' : 'full');
+}
+grabEl.addEventListener('pointerup', grabEnd); grabEl.addEventListener('pointercancel', grabEnd);
 new ResizeObserver(() => document.documentElement.style.setProperty('--sheet', panelEl.offsetHeight + 'px')).observe(panelEl);
 // search (OpenStreetMap Nominatim, light use)
 const res = document.getElementById('results');
