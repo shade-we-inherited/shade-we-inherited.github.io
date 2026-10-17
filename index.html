@@ -62,6 +62,7 @@ legend { font-size: 13px; font-weight: 500; padding: 0; margin-bottom: 4px; }
 .pin { width: 18px; height: 18px; border-radius: 50%; background: var(--leaf); border: 2.5px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.4); }
 .pin.mine { background: #c2622d; }
 .pin.gone { background: #fff; border: 3px solid var(--leaf); }
+.pin.sel { transform: scale(1.3); box-shadow: 0 0 0 5px rgba(47,107,69,.35), 0 1px 4px rgba(0,0,0,.4); }
 .imgdate { font: 500 12px var(--body); color: var(--ink); background: rgba(246,243,236,.92); border: 1px solid var(--rule); border-radius: 999px; padding: 4px 10px; justify-self: end; box-shadow: 0 2px 8px rgba(36,34,31,.12); }
 .linkrow { display: flex; gap: 6px; }
 .linkrow input { font: 13px var(--body); flex: 1; min-width: 0; border: 1px solid var(--rule); border-radius: 6px; padding: 7px 9px; background: #fff; color: var(--ink); }
@@ -105,6 +106,15 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
   .leaflet-control-zoom { display: none; }                 /* pinch to zoom on phones */
   .leaflet-bottom.leaflet-right { bottom: var(--sheet, 46%); }
   .leaflet-control-attribution { font-size: 10px; }
+  /* phones: a tapped tree's story opens in the sheet, the way map apps show a place */
+  .panel.reading > :not(#story) { display: none !important; }
+  #story { display: grid; gap: 6px; position: relative; padding-right: 36px; }
+  #story .card { min-width: 0; gap: 6px; }
+  #story .card .t { font-size: 24px; }
+  #story .card .s { font-size: 15px; line-height: 1.5; }
+  #story .card .w { font-size: 13px; }
+  #story .editbtn { min-height: 44px; padding: 8px 16px; font-size: 14px; }
+  #storyClose { position: absolute; top: -6px; right: -10px; width: 44px; height: 44px; border: 0; background: none; font: 26px/1 var(--body); color: var(--sub); padding: 0; }
 }
 </style>
 </head>
@@ -123,6 +133,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 </div>
 
 <aside class="panel" id="panel">
+  <div id="story" hidden><button type="button" id="storyClose" aria-label="Close story">&times;</button><div id="storyBody"></div></div>
   <h1>Shade We Inherited</h1>
   <p class="intro" id="intro">Somewhere there is a tree that shaped a little piece of your life, whether you sat in its shade, picked its fruit or watched the world go by from under it. Someone planted it, or it came up on its own, and you got to enjoy it. Pin it on the map with a line or three about what it meant to you, and together we'll map the shade we inherited.</p>
   <button type="button" class="more" id="more" aria-expanded="false">Read more</button>
@@ -187,6 +198,7 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbxY3ulRZZSQdYZ4zJrv-KA8
 
 const map = L.map('map', { worldCopyJump: true, zoomControl: false, minZoom: 2 }).setView([15, 15], 2);
 // the part of the map not covered by the text panel (left on wide screens, bottom sheet on phones)
+const isPhone = () => innerWidth <= 640;
 function viewPad() {
   const p = document.getElementById('panel');
   return innerWidth > 640 ? { tl: L.point(p.offsetWidth + 32, 60), br: L.point(60, 60) } : { tl: L.point(30, 110), br: L.point(30, p.offsetHeight + 20) };
@@ -279,6 +291,8 @@ function addPin(p, cls, tag) {                     // the count only includes tr
   let was = false;
   if (p.pid && markers[p.pid]) { was = markers[p.pid]._pub; cluster.removeLayer(markers[p.pid]); if (was) total--; }
   const m = L.marker([+p.lat, +p.lon], { icon: icon(cls || (p.status === 'gone' ? 'gone' : '')) }).bindPopup(card(p, tag), popOpts()).addTo(cluster);
+  m._p = p; m._tag = tag;
+  m.on('popupopen', () => { if (isPhone() && !s1.hidden) { m.closePopup(); if (map.getZoom() >= 14) showStory(m); } });   // from far out the fly-in reopens it once close
   m._pub = !tag || was;                            // an edit of an approved tree stays public in its earlier version
   m.on('click', () => {                           // from far out, fly in to the tree first, then open its story
     if (map.getZoom() >= 14) return;
@@ -340,7 +354,22 @@ async function startEdit(t) {
   ok.checked = true; stepT.textContent = 'Edit your tree'; send.textContent = 'Save changes'; rm.hidden = false; hint.hidden = false;
   place(L.latLng(+p.lat, +p.lon)); flyCentered(L.latLng(+p.lat, +p.lon), 17);
 }
-map.on('click', e => { if (done.hidden && !editTok) place(e.latlng); });
+map.on('click', e => { if (panelEl.classList.contains('reading')) { closeStory(); return; } if (done.hidden && !editTok) place(e.latlng); });
+// phones: show a tree's story in the bottom sheet and keep the map clear
+let storyM = null;
+function showStory(m) {
+  if (storyM && storyM._icon) storyM._icon.firstChild.classList.remove('sel');
+  storyM = m; document.getElementById('storyBody').innerHTML = card(m._p, m._tag);
+  document.getElementById('story').hidden = false; panelEl.classList.add('reading'); panelEl.scrollTop = 0;
+  if (m._icon) m._icon.firstChild.classList.add('sel');
+  requestAnimationFrame(() => { const off = viewPad().tl.subtract(viewPad().br).divideBy(2); map.panTo(map.unproject(map.project(m.getLatLng()).subtract(off)), { duration: 0.4 }); });
+}
+function closeStory() {
+  if (storyM && storyM._icon) storyM._icon.firstChild.classList.remove('sel');
+  storyM = null; document.getElementById('story').hidden = true; panelEl.classList.remove('reading');
+}
+document.getElementById('storyClose').onclick = closeStory;
+document.getElementById('story').addEventListener('click', e => { const b = e.target.closest('.editbtn'); if (b) { const t = b.dataset.token; closeStory(); startEdit(t); } });
 map.getContainer().addEventListener('click', e => { const b = e.target.closest('.editbtn'); if (b) { e.stopPropagation(); startEdit(b.dataset.token); } }, true);
 document.getElementById('cancel').onclick = resetForm;
 const check = () => { send.disabled = !(why.value.trim().length > 2 && ok.checked && draft); };
