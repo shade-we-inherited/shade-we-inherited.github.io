@@ -63,6 +63,9 @@ legend { font-size: 13px; font-weight: 500; padding: 0; margin-bottom: 4px; }
 .pin { width: 18px; height: 18px; border-radius: 50%; background: var(--leaf); border: 2.5px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.4); }
 .pin.mine { background: #c2622d; }
 .pin.gone { background: #fff; border: 3px solid var(--leaf); }
+.me { width: 18px; height: 18px; border-radius: 50%; background: #1a73e8; border: 3px solid #fff; box-shadow: 0 1px 5px rgba(0,0,0,.35); position: relative; }
+.me::after { content: ""; position: absolute; inset: -9px; border-radius: 50%; background: rgba(26,115,232,.35); animation: mepulse 2s ease-out infinite; z-index: -1; }
+@keyframes mepulse { from { transform: scale(.5); opacity: 1; } to { transform: scale(1.8); opacity: 0; } }
 .pin.sel { transform: scale(1.3); box-shadow: 0 0 0 5px rgba(47,107,69,.35), 0 1px 4px rgba(0,0,0,.4); }
 .imgdate { font: 500 12px var(--body); color: var(--ink); background: rgba(246,243,236,.92); border: 1px solid var(--rule); border-radius: 999px; padding: 4px 10px; justify-self: end; box-shadow: 0 2px 8px rgba(36,34,31,.12); }
 .linkrow { display: flex; gap: 6px; }
@@ -463,8 +466,22 @@ document.getElementById('search').onsubmit = async e => {
       res.appendChild(b); });
   } catch (err) { res.innerHTML = '<button type="button" disabled>Search is unavailable right now</button>'; }
 };
-document.getElementById('locate').onclick = () => map.locate({ setView: true, maxZoom: 17 });
-map.on('locationerror', () => { res.hidden = false; res.innerHTML = '<button type="button" disabled>Location not shared. Search for the place instead.</button>'; setTimeout(() => res.hidden = true, 4000); });
+// Near me: a blue dot for where you are, with a soft circle showing how accurate the fix is.
+// The position stays in this browser and is never sent anywhere.
+let meDot = null, meRing = null, meFly = false;
+document.getElementById('locate').onclick = () => {
+  meFly = !meDot;
+  if (meDot) flyCentered(meDot.getLatLng(), Math.max(map.getZoom(), 17));
+  map.locate({ watch: true, enableHighAccuracy: true, setView: false });
+};
+map.on('locationfound', e => {
+  if (!meDot) {
+    meRing = L.circle(e.latlng, { radius: e.accuracy, color: '#1a73e8', weight: 1, opacity: .4, fillColor: '#1a73e8', fillOpacity: .12, interactive: false }).addTo(map);
+    meDot = L.marker(e.latlng, { icon: L.divIcon({ className: '', html: '<div class="me"></div>', iconSize: [18, 18], iconAnchor: [9, 9] }), interactive: false, keyboard: false, zIndexOffset: 500 }).addTo(map);
+  } else { meDot.setLatLng(e.latlng); meRing.setLatLng(e.latlng).setRadius(e.accuracy); }
+  if (meFly) { meFly = false; flyCentered(e.latlng, e.accuracy > 500 ? 15 : 17); }
+});
+map.on('locationerror', () => { if (meDot) return; res.hidden = false; res.innerHTML = '<button type="button" disabled>Location not shared. Search for the place instead.</button>'; setTimeout(() => res.hidden = true, 4000); });
 </script>
 </body>
 </html>
