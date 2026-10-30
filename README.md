@@ -11,4 +11,4 @@ Pins appear after a quick check, usually within a day. Please pin trees in publi
 - `index.html` is the whole site: a Leaflet map with OpenStreetMap and Esri World Imagery base maps, place search through OpenStreetMap Nominatim, and a short form.
 - New pins are sent to a Google Apps Script web app (`Code.gs`), which adds them to a Google Sheet owned by the project. Nothing is public until it has been approved, and the map only receives approved pins.
 
-The stories become Day 16 (Collaborative map) of Elias Omondi's #30DayMapChallenge on 16 November 2026.
+© Elias Omondi, 2026
